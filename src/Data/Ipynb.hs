@@ -331,7 +331,7 @@ data Output a =
     , displayMetadata :: JSONMeta
     }
   | ExecuteResult
-    { executeCount    :: Int
+    { executeCount    :: Maybe Int
     , executeData     :: MimeBundle
     , executeMetadata :: JSONMeta
     }
@@ -380,7 +380,7 @@ instance FromJSON (Output NbV3) where
           <*> v .:? "metadata" .!= mempty
       "pyout" ->
         ExecuteResult
-          <$> v .: "prompt_number"
+          <$> v .:? "prompt_number"
           <*> extractNbV3Data v
           <*> v .:? "metadata" .!= mempty
       "pyerr" ->
@@ -442,11 +442,11 @@ instance ToJSON (Output NbV3) where
     , "data" .= displayData d
     , "metadata" .= displayMetadata d ]
   toJSON e@ExecuteResult{} =
-    adjustV3DataFields $ object
+    adjustV3DataFields $ object $
     [ "output_type" .= ("pyout" :: Text)
-    , "prompt_number" .= executeCount e
     , "data" .= executeData e
-    , "metadata" .= executeMetadata e ]
+    , "metadata" .= executeMetadata e ] ++
+    maybe [] (\n -> ["prompt_number" .= n]) (executeCount e)
   toJSON e@Err{} = object
     [ "output_type" .= ("pyerr" :: Text)
     , "ename" .= errName e

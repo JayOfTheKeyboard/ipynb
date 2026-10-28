@@ -23,7 +23,9 @@ main = do
   let rtdir = "test" </> "rt-files"
   createDirectoryIfMissing False rtdir
   fs <- map (rtdir </>) . filter isIpynb <$> getDirectoryContents rtdir
-  defaultMain $ testGroup "round-trip tests" $ map rtTest fs
+  defaultMain $ testGroup "tests"
+    [ testGroup "round-trip tests" $ map rtTest fs
+    , nullCountTests ]
 
 isIpynb :: FilePath -> Bool
 isIpynb fp = takeExtension fp == ".ipynb"
@@ -52,3 +54,20 @@ rtTest4 inRaw = do
   -- test that (write . read) == id
   assertEqual "write . read != read" nb nb'
 
+-- execution_count may be null (v4); prompt_number is left out (v3).
+nullCountTests :: TestTree
+nullCountTests = testGroup "null execution count"
+  [ testCase "v4 execute_result writes null" $ do
+      inRaw <- BL.readFile ("test" </> "rt-files" </>
+                            "test4execute_result_null.ipynb")
+      (nb :: Notebook NbV4) <- either error return $ eitherDecode inRaw
+      let out = encode nb ^? key "cells" . nth 0 . key "outputs" . nth 0
+      assertEqual "execution_count" (Just Null)
+        (out >>= (^? key "execution_count"))
+  , testCase "v3 pyout omits prompt_number" $ do
+      let inRaw = "{\"output_type\":\"pyout\",\"prompt_number\":null,\"metadata\":{},\"text\":\"2\"}"
+      (out :: Output NbV3) <- either error return $ eitherDecode inRaw
+      assertEqual "prompt_number" Nothing (encode out ^? key "prompt_number")
+      (out' :: Output NbV3) <- either error return $ eitherDecode (encode out)
+      assertEqual "write . read != read" out out'
+  ]
